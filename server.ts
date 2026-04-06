@@ -19,6 +19,8 @@ const PORT = process.env.PORT || 3000;
 
 // Database setup
 const dbPath = process.env.DATABASE_PATH || 'database.sqlite';
+const uploadsPath = process.env.UPLOADS_PATH || path.join(process.cwd(), 'public', 'uploads');
+
 const db = new Database(dbPath);
 db.exec(`
   CREATE TABLE IF NOT EXISTS articles (
@@ -71,11 +73,10 @@ if (!existingUser) {
 // Multer setup for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    if (!fs.existsSync(uploadsPath)) {
+      fs.mkdirSync(uploadsPath, { recursive: true });
     }
-    cb(null, uploadDir);
+    cb(null, uploadsPath);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
@@ -414,6 +415,10 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    
+    // Serve uploads from the configured path
+    app.use('/uploads', express.static(uploadsPath));
+
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

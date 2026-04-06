@@ -1,0 +1,18 @@
+app = "ivaylo-blog" # Променете на уникално име
+primary_region = "fra" # Франкфурт е най-близо до България
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[mounts]]
+  source = "data"
+  destination = "/var/lib/data"
+
+[env]
+  NODE_ENV = "production"
+  DATABASE_PATH = "/var/lib/data/database.sqlite"
+  UPLOADS_PATH = "/var/lib/data/uploads"
