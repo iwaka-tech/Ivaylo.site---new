@@ -3,21 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Trash2, LogOut, Key, FileText, Image as ImageIcon, Music, Video, CheckCircle, Edit3, X, Users, AlertTriangle, MessageSquare } from 'lucide-react';
 import ReactQuill, { Quill } from 'react-quill-new';
-import ImageResize from 'quill-image-resize-module-react';
 import 'react-quill-new/dist/quill.snow.css';
 import { useGameStore } from '../store/useGameStore';
-
-// Register ImageResize module
-if (typeof window !== 'undefined') {
-  (window as any).Quill = Quill;
-}
 
 // Register custom font sizes
 const Size = Quill.import('formats/size') as any;
 Size.whitelist = ['8', '9', '10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '26', '28', '30', '36', '40', '48', '50', '60', '64', '72', '80', '96'];
 Quill.register(Size, true);
-
-Quill.register('modules/imageResize', ImageResize);
 
 export const Admin = () => {
   const [articles, setArticles] = useState<any[]>([]);
@@ -190,11 +182,7 @@ export const Admin = () => {
       [{ 'list': 'ordered' }, { 'list': 'bullet' }],
       ['link', 'image', 'video'],
       ['clean']
-    ],
-    imageResize: {
-      parchment: Quill.import('parchment'),
-      modules: ['Resize', 'DisplaySize']
-    }
+    ]
   };
 
   if (!authenticated) return null;
