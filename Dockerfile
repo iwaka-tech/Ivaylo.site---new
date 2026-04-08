@@ -1,23 +1,21 @@
-# Use the official Node.js image.
-FROM node:22
+FROM node:20-alpine
 
-# Create and change to the app directory.
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy application dependency manifests to the container image.
+# Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Install dependencies.
-RUN npm install
+# Install dependencies
+RUN npm ci
 
-# Copy local code to the container image.
+# Copy the rest of the application code
 COPY . .
 
-# Build the frontend.
+# Build the Vite application
 RUN npm run build
 
-# Expose the port the app runs on.
+# Expose the port the app runs on
 EXPOSE 3000
 
-# Run the web service on container startup.
-CMD [ "npm", "start" ]
+# Start the application
+CMD ["npm", "run", "start"]
