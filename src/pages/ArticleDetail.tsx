@@ -281,6 +281,7 @@ export const ArticleDetail = () => {
         .article-content .ql-size-96 { font-size: 96px; }
         .article-content img { max-width: 100%; height: auto; border-radius: 1rem; margin: 1.5rem 0; }
         .article-content iframe { width: 100%; aspect-ratio: 16/9; border-radius: 1rem; margin: 1.5rem 0; }
+        .article-content video { max-width: 100%; border-radius: 1rem; margin: 1.5rem 0; }
       `}</style>
 
       <div className="max-w-4xl mx-auto relative z-10">

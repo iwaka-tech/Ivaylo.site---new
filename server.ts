@@ -345,6 +345,27 @@ async function startServer() {
     }
   });
 
+  app.post('/api/upload-media', authMiddleware, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      
+      const mimetype = req.file.mimetype;
+      let media_type = 'image';
+      if (mimetype.startsWith('video/')) media_type = 'video';
+      else if (mimetype.startsWith('audio/')) media_type = 'audio';
+      
+      const result = await uploadToCloudinary(
+        req.file.buffer, 
+        media_type === 'video' || media_type === 'audio' ? 'video' : 'image'
+      );
+      
+      res.json({ url: result.secure_url, type: media_type });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Upload error' });
+    }
+  });
+
   app.put('/api/articles/:id', authMiddleware, upload.single('media'), async (req, res) => {
     const { title, content, category, tag } = req.body;
     const id = req.params.id;

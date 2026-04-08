@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, LogOut, Key, FileText, Image as ImageIcon, Music, Video, CheckCircle, Edit3, X, Users, AlertTriangle, MessageSquare } from 'lucide-react';
+import { Plus, Trash2, LogOut, Key, FileText, Image as ImageIcon, Music, Video, CheckCircle, Edit3, X, Users, AlertTriangle, MessageSquare, Loader2 } from 'lucide-react';
 import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { useGameStore } from '../store/useGameStore';
@@ -10,6 +10,25 @@ import { useGameStore } from '../store/useGameStore';
 const Size = Quill.import('formats/size') as any;
 Size.whitelist = ['8', '9', '10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '26', '28', '30', '36', '40', '48', '50', '60', '64', '72', '80', '96'];
 Quill.register(Size, true);
+
+// Custom Video Blot to support standard HTML5 video tags instead of iframes
+const BlockEmbed = Quill.import('blots/block/embed') as any;
+class CustomVideoBlot extends BlockEmbed {
+  static create(value: string) {
+    const node = super.create();
+    node.setAttribute('src', value);
+    node.setAttribute('controls', 'true');
+    node.setAttribute('controlsList', 'nodownload');
+    node.setAttribute('style', 'max-width: 100%; border-radius: 0.5rem; margin: 10px 0;');
+    return node;
+  }
+  static value(node: HTMLElement) {
+    return node.getAttribute('src');
+  }
+}
+CustomVideoBlot.blotName = 'customVideo';
+CustomVideoBlot.tagName = 'video';
+Quill.register(CustomVideoBlot);
 
 export const Admin = () => {
   const [articles, setArticles] = useState<any[]>([]);
@@ -175,15 +194,78 @@ export const Admin = () => {
     }
   };
 
-  const quillModules = {
-    toolbar: [
-      [{ 'size': ['8', '9', '10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '26', '28', '30', '36', '40', '48', '50', '60', '64', '72', '80', '96'] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-      ['link', 'image', 'video'],
-      ['clean']
-    ]
+  const reactQuillRef = useRef<ReactQuill>(null);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
+  const uploadEditorMedia = async (file: File, type: 'image' | 'video') => {
+    setIsUploadingMedia(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('/api/upload-media', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.url) {
+        const quill = reactQuillRef.current?.getEditor();
+        if (quill) {
+          const range = quill.getSelection(true);
+          if (file.type.startsWith('video/')) {
+            quill.insertEmbed(range.index, 'customVideo', data.url);
+          } else {
+            quill.insertEmbed(range.index, 'image', data.url);
+          }
+          quill.setSelection(range.index + 1, 0);
+        }
+      }
+    } catch (err) {
+      console.error('Media upload failed', err);
+      setError('Грешка при качване на медия в редактора.');
+    } finally {
+      setIsUploadingMedia(false);
+    }
   };
+
+  const imageHandler = () => {
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.setAttribute('accept', 'image/*');
+    input.click();
+    input.onchange = async () => {
+      const file = input.files ? input.files[0] : null;
+      if (!file) return;
+      await uploadEditorMedia(file, 'image');
+    };
+  };
+
+  const videoHandler = () => {
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.setAttribute('accept', 'video/*,image/gif');
+    input.click();
+    input.onchange = async () => {
+      const file = input.files ? input.files[0] : null;
+      if (!file) return;
+      await uploadEditorMedia(file, 'video');
+    };
+  };
+
+  const quillModules = useMemo(() => ({
+    toolbar: {
+      container: [
+        [{ 'size': ['8', '9', '10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '26', '28', '30', '36', '40', '48', '50', '60', '64', '72', '80', '96'] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+        ['link', 'image', 'video'],
+        ['clean']
+      ],
+      handlers: {
+        image: imageHandler,
+        video: videoHandler
+      }
+    }
+  }), []);
 
   if (!authenticated) return null;
 
@@ -359,8 +441,17 @@ export const Admin = () => {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-500 uppercase tracking-widest ml-1">Съдържание</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-medium text-gray-500 uppercase tracking-widest ml-1">Съдържание</label>
+                    {isUploadingMedia && (
+                      <div className="flex items-center gap-2 text-cyan-400 text-xs font-medium">
+                        <Loader2 size={14} className="animate-spin" />
+                        Качване на файл...
+                      </div>
+                    )}
+                  </div>
                   <ReactQuill 
+                    ref={reactQuillRef}
                     theme="snow" 
                     value={content} 
                     onChange={setContent}
