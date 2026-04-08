@@ -10,80 +10,30 @@ import { v4 as uuidv4 } from 'uuid';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
-import Database from 'better-sqlite3';
+import { createClient } from '@libsql/client';
 import multer from 'multer';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
+import { v2 as cloudinary } from 'cloudinary';
+import streamifier from 'streamifier';
 
 const PORT = process.env.PORT || 3000;
 
-// Database setup
-const dbPath = process.env.DATABASE_PATH || 'database.sqlite';
-const uploadsPath = process.env.UPLOADS_PATH || path.join(process.cwd(), 'public', 'uploads');
-
-const db = new Database(dbPath);
-db.exec(`
-  CREATE TABLE IF NOT EXISTS articles (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    category TEXT NOT NULL, -- 'blog' or 'useful'
-    tag TEXT, -- 'Преживявания', 'Мнения', etc.
-    media_url TEXT,
-    media_type TEXT, -- 'image', 'audio', 'video'
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS comments (
-    id TEXT PRIMARY KEY,
-    article_id TEXT NOT NULL,
-    parent_id TEXT, -- For replies
-    name TEXT,
-    instagram TEXT,
-    content TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
-  );
-`);
-
-// Migration: Add tag column if it doesn't exist
-try {
-  db.prepare('SELECT tag FROM articles LIMIT 1').get();
-} catch (e) {
-  console.log('Adding tag column to articles table...');
-  db.exec('ALTER TABLE articles ADD COLUMN tag TEXT');
-}
-
-// Initial credentials
-const initialUser = 'Iwog1322.';
-const initialPass = 'ivopower00';
-const hashedPass = bcrypt.hashSync(initialPass, 10);
-
-const existingUser = db.prepare('SELECT * FROM settings WHERE key = ?').get('admin_user');
-if (!existingUser) {
-  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('admin_user', initialUser);
-  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('admin_pass', hashedPass);
-}
-
-// Multer setup for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (!fs.existsSync(uploadsPath)) {
-      fs.mkdirSync(uploadsPath, { recursive: true });
-    }
-    cb(null, uploadsPath);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
-  }
+// Cloudinary configuration
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
-const upload = multer({ storage });
+
+// Multer setup for memory storage (we upload to Cloudinary from memory)
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Database setup
+const db = createClient({
+  url: process.env.TURSO_DATABASE_URL || 'file:database.sqlite',
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
 // Types
 type Vector3 = { x: number; y: number; z: number };
@@ -124,11 +74,78 @@ function broadcast(data: any, excludeId?: string) {
   }
 }
 
+const app = express();
+const server = http.createServer(app);
+
+export default app;
+
+async function initDb() {
+  await db.executeMultiple(`
+    CREATE TABLE IF NOT EXISTS articles (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      category TEXT NOT NULL,
+      tag TEXT,
+      media_url TEXT,
+      media_type TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS comments (
+      id TEXT PRIMARY KEY,
+      article_id TEXT NOT NULL,
+      parent_id TEXT,
+      name TEXT,
+      instagram TEXT,
+      content TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+    );
+  `);
+
+  try {
+    await db.execute('SELECT tag FROM articles LIMIT 1');
+  } catch (e) {
+    console.log('Adding tag column to articles table...');
+    await db.execute('ALTER TABLE articles ADD COLUMN tag TEXT');
+  }
+
+  const initialUser = 'Iwog1322.';
+  const initialPass = 'ivopower00';
+  const hashedPass = bcrypt.hashSync(initialPass, 10);
+
+  const existingUser = await db.execute({ sql: 'SELECT * FROM settings WHERE key = ?', args: ['admin_user'] });
+  if (existingUser.rows.length === 0) {
+    await db.execute({ sql: 'INSERT INTO settings (key, value) VALUES (?, ?)', args: ['admin_user', initialUser] });
+    await db.execute({ sql: 'INSERT INTO settings (key, value) VALUES (?, ?)', args: ['admin_pass', hashedPass] });
+  }
+}
+
+// Helper to upload buffer to Cloudinary
+const uploadToCloudinary = (buffer: Buffer, resourceType: 'image' | 'video' | 'raw' | 'auto' = 'auto'): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    const cld_upload_stream = cloudinary.uploader.upload_stream(
+      { resource_type: resourceType, folder: 'ivaylo_blog' },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    streamifier.createReadStream(buffer).pipe(cld_upload_stream);
+  });
+};
+
 async function startServer() {
-  const app = express();
+  await initDb();
+
   app.use(express.json());
   app.use(cookieParser());
-  const server = http.createServer(app);
   
   // WebSocket Server
   const wss = new WebSocketServer({ server });
@@ -147,7 +164,6 @@ async function startServer() {
     players.set(id, player);
     clients.set(id, ws);
 
-    // Send initial state to the new client
     ws.send(JSON.stringify({
       type: 'init',
       id,
@@ -156,7 +172,6 @@ async function startServer() {
       forceFields: Array.from(forceFields.values())
     }));
 
-    // Broadcast new player to others
     broadcast({
       type: 'player_joined',
       player
@@ -184,7 +199,6 @@ async function startServer() {
           };
           forceFields.set(forceId, force);
           
-          // Broadcast new force field immediately
           broadcast({
             type: 'force_added',
             force
@@ -199,7 +213,6 @@ async function startServer() {
       players.delete(id);
       clients.delete(id);
       
-      // Remove player's force fields
       for (const [forceId, force] of forceFields.entries()) {
         if (force.ownerId === id) {
           forceFields.delete(forceId);
@@ -213,11 +226,8 @@ async function startServer() {
     });
   });
 
-  // Broadcast loop (20Hz)
   setInterval(() => {
     const now = Date.now();
-    
-    // Clean up old force fields (e.g., after 10.5 seconds to allow client animation)
     let forcesChanged = false;
     for (const [id, force] of forceFields.entries()) {
       if (now - force.createdAt > 10500) {
@@ -235,50 +245,43 @@ async function startServer() {
     broadcast(updateData);
   }, 50);
 
-  // Auth Middleware
   const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const token = req.cookies.admin_token;
-    if (token === 'ivaylo_admin_session') { // Simple token for now
+    if (token === 'ivaylo_admin_session') {
       next();
     } else {
       res.status(401).json({ error: 'Unauthorized' });
     }
   };
 
-  // API routes
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', players: players.size });
   });
 
-  // Login
-  app.post('/api/login', (req, res) => {
+  app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
-    console.log(`Login attempt for user: ${username}`);
-
     try {
-      const adminUser = db.prepare('SELECT value FROM settings WHERE key = ?').get('admin_user') as any;
-      const adminPass = db.prepare('SELECT value FROM settings WHERE key = ?').get('admin_pass') as any;
+      const adminUserRes = await db.execute({ sql: 'SELECT value FROM settings WHERE key = ?', args: ['admin_user'] });
+      const adminPassRes = await db.execute({ sql: 'SELECT value FROM settings WHERE key = ?', args: ['admin_pass'] });
 
-      if (!adminUser || !adminPass) {
-        console.error('Admin credentials not found in database');
+      if (adminUserRes.rows.length === 0 || adminPassRes.rows.length === 0) {
         return res.status(500).json({ error: 'Server configuration error' });
       }
 
-      const isMatch = bcrypt.compareSync(password, adminPass.value);
-      console.log(`Password match: ${isMatch}`);
+      const adminUser = adminUserRes.rows[0].value as string;
+      const adminPass = adminPassRes.rows[0].value as string;
 
-      if (username === adminUser.value && isMatch) {
-        // Set cookie with settings that work better in iframes
+      const isMatch = bcrypt.compareSync(password, adminPass);
+
+      if (username === adminUser && isMatch) {
         res.cookie('admin_token', 'ivaylo_admin_session', { 
           httpOnly: true, 
           maxAge: 86400000,
           sameSite: 'none',
           secure: true
         });
-        console.log('Login successful, cookie set');
         res.json({ success: true });
       } else {
-        console.log('Invalid credentials');
         res.status(401).json({ error: 'Invalid credentials' });
       }
     } catch (error) {
@@ -295,117 +298,141 @@ async function startServer() {
   app.get('/api/check-auth', (req, res) => {
     const token = req.cookies.admin_token;
     const authenticated = token === 'ivaylo_admin_session';
-    console.log(`Auth check: ${authenticated ? 'Authenticated' : 'Not authenticated'}`);
     res.json({ authenticated });
   });
 
-  // Articles
-  app.get('/api/articles', (req, res) => {
+  app.get('/api/articles', async (req, res) => {
     const category = req.query.category;
-    let articles;
-    if (category) {
-      articles = db.prepare('SELECT * FROM articles WHERE category = ? ORDER BY created_at DESC').all(category);
-    } else {
-      articles = db.prepare('SELECT * FROM articles ORDER BY created_at DESC').all();
+    try {
+      let articles;
+      if (category) {
+        articles = await db.execute({ sql: 'SELECT * FROM articles WHERE category = ? ORDER BY created_at DESC', args: [category as string] });
+      } else {
+        articles = await db.execute('SELECT * FROM articles ORDER BY created_at DESC');
+      }
+      res.json(articles.rows);
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
     }
-    res.json(articles);
   });
 
-  app.post('/api/articles', authMiddleware, upload.single('media'), (req, res) => {
+  app.post('/api/articles', authMiddleware, upload.single('media'), async (req, res) => {
     const { title, content, category, tag } = req.body;
     const id = uuidv4();
     let media_url = null;
     let media_type = null;
 
-    if (req.file) {
-      media_url = `/uploads/${req.file.filename}`;
-      const mimetype = req.file.mimetype;
-      if (mimetype.startsWith('image/')) media_type = 'image';
-      else if (mimetype.startsWith('audio/')) media_type = 'audio';
-      else if (mimetype.startsWith('video/')) media_type = 'video';
+    try {
+      if (req.file) {
+        const mimetype = req.file.mimetype;
+        if (mimetype.startsWith('image/')) media_type = 'image';
+        else if (mimetype.startsWith('audio/')) media_type = 'audio';
+        else if (mimetype.startsWith('video/')) media_type = 'video';
+        
+        const result = await uploadToCloudinary(req.file.buffer, media_type === 'video' || media_type === 'audio' ? 'video' : 'image');
+        media_url = result.secure_url;
+      }
+
+      await db.execute({
+        sql: 'INSERT INTO articles (id, title, content, category, tag, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        args: [id, title, content, category, tag || null, media_url, media_type]
+      });
+
+      res.json({ success: true, id });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Upload or database error' });
     }
-
-    db.prepare('INSERT INTO articles (id, title, content, category, tag, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(id, title, content, category, tag || null, media_url, media_type);
-
-    res.json({ success: true, id });
   });
 
-  app.put('/api/articles/:id', authMiddleware, upload.single('media'), (req, res) => {
+  app.put('/api/articles/:id', authMiddleware, upload.single('media'), async (req, res) => {
     const { title, content, category, tag } = req.body;
     const id = req.params.id;
     
-    const existing = db.prepare('SELECT media_url, media_type FROM articles WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Not found' });
+    try {
+      const existingRes = await db.execute({ sql: 'SELECT media_url, media_type FROM articles WHERE id = ?', args: [id] });
+      if (existingRes.rows.length === 0) return res.status(404).json({ error: 'Not found' });
 
-    let media_url = existing.media_url;
-    let media_type = existing.media_type;
+      const existing = existingRes.rows[0];
+      let media_url = existing.media_url;
+      let media_type = existing.media_type;
 
-    if (req.file) {
-      // Delete old file if exists
-      if (existing.media_url) {
-        const oldPath = path.join(process.cwd(), 'public', existing.media_url);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      if (req.file) {
+        const mimetype = req.file.mimetype;
+        if (mimetype.startsWith('image/')) media_type = 'image';
+        else if (mimetype.startsWith('audio/')) media_type = 'audio';
+        else if (mimetype.startsWith('video/')) media_type = 'video';
+        
+        const result = await uploadToCloudinary(req.file.buffer, media_type === 'video' || media_type === 'audio' ? 'video' : 'image');
+        media_url = result.secure_url;
       }
-      media_url = `/uploads/${req.file.filename}`;
-      const mimetype = req.file.mimetype;
-      if (mimetype.startsWith('image/')) media_type = 'image';
-      else if (mimetype.startsWith('audio/')) media_type = 'audio';
-      else if (mimetype.startsWith('video/')) media_type = 'video';
+
+      await db.execute({
+        sql: 'UPDATE articles SET title = ?, content = ?, category = ?, tag = ?, media_url = ?, media_type = ? WHERE id = ?',
+        args: [title, content, category, tag || null, media_url, media_type, id]
+      });
+
+      res.json({ success: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Upload or database error' });
     }
-
-    db.prepare('UPDATE articles SET title = ?, content = ?, category = ?, tag = ?, media_url = ?, media_type = ? WHERE id = ?')
-      .run(title, content, category, tag || null, media_url, media_type, id);
-
-    res.json({ success: true });
   });
 
-  app.delete('/api/articles/:id', authMiddleware, (req, res) => {
-    const article = db.prepare('SELECT media_url FROM articles WHERE id = ?').get(req.params.id) as any;
-    if (article && article.media_url) {
-      const filePath = path.join(process.cwd(), 'public', article.media_url);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+  app.delete('/api/articles/:id', authMiddleware, async (req, res) => {
+    try {
+      await db.execute({ sql: 'DELETE FROM articles WHERE id = ?', args: [req.params.id] });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
     }
-    db.prepare('DELETE FROM articles WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
   });
 
-  // Change password
-  app.post('/api/change-password', authMiddleware, (req, res) => {
+  app.post('/api/change-password', authMiddleware, async (req, res) => {
     const { newPassword } = req.body;
     const hashed = bcrypt.hashSync(newPassword, 10);
-    db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(hashed, 'admin_pass');
-    res.json({ success: true });
+    try {
+      await db.execute({ sql: 'UPDATE settings SET value = ? WHERE key = ?', args: [hashed, 'admin_pass'] });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
+    }
   });
 
-  // Comments API
-  app.get('/api/articles/:id/comments', (req, res) => {
-    const comments = db.prepare('SELECT * FROM comments WHERE article_id = ? ORDER BY created_at ASC').all(req.params.id);
-    res.json(comments);
+  app.get('/api/articles/:id/comments', async (req, res) => {
+    try {
+      const comments = await db.execute({ sql: 'SELECT * FROM comments WHERE article_id = ? ORDER BY created_at ASC', args: [req.params.id] });
+      res.json(comments.rows);
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
+    }
   });
 
-  app.post('/api/articles/:id/comments', (req, res) => {
+  app.post('/api/articles/:id/comments', async (req, res) => {
     const { name, instagram, content, parent_id } = req.body;
     const id = uuidv4();
     const article_id = req.params.id;
 
-    db.prepare('INSERT INTO comments (id, article_id, parent_id, name, instagram, content) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(id, article_id, parent_id || null, name || 'Анонимен', instagram || null, content);
-
-    res.json({ success: true, id });
+    try {
+      await db.execute({
+        sql: 'INSERT INTO comments (id, article_id, parent_id, name, instagram, content) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [id, article_id, parent_id || null, name || 'Анонимен', instagram || null, content]
+      });
+      res.json({ success: true, id });
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
+    }
   });
 
-  app.delete('/api/comments/:id', authMiddleware, (req, res) => {
-    // Also delete replies recursively (sqlite doesn't do this automatically with self-ref unless configured, but we can just delete the parent and the children will be orphaned or we can delete them manually)
-    // For simplicity, we'll just delete the specific comment. If it's a parent, the replies will still exist but their parent_id will point to nothing.
-    // Better: delete the comment and its immediate replies.
-    db.prepare('DELETE FROM comments WHERE id = ? OR parent_id = ?').run(req.params.id, req.params.id);
-    res.json({ success: true });
+  app.delete('/api/comments/:id', authMiddleware, async (req, res) => {
+    try {
+      await db.execute({ sql: 'DELETE FROM comments WHERE id = ? OR parent_id = ?', args: [req.params.id, req.params.id] });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
+    }
   });
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -416,17 +443,16 @@ async function startServer() {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     
-    // Serve uploads from the configured path
-    app.use('/uploads', express.static(uploadsPath));
-
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (process.env.VERCEL !== '1') {
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
 startServer();
