@@ -234,7 +234,7 @@ export const ArticleDetail = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#050505] pt-24 md:pt-32 pb-20 px-4 md:px-6 relative overflow-hidden">
+    <div className="min-h-screen bg-[#050505] pt-32 md:pt-40 pb-20 px-4 md:px-6 relative overflow-hidden">
       {/* Print Styles */}
       <style>{`
         @media print {
@@ -249,8 +249,9 @@ export const ArticleDetail = () => {
         .article-content h1 { font-size: 2rem; font-weight: bold; margin-bottom: 1rem; color: white; }
         .article-content h2 { font-size: 1.5rem; font-weight: bold; margin-bottom: 0.75rem; color: white; }
         .article-content h3 { font-size: 1.25rem; font-weight: bold; margin-bottom: 0.5rem; color: white; }
-        .article-content p { margin-bottom: 1rem; line-height: 1.7; color: #94a3b8; }
-        .article-content ul, .article-content ol { margin-bottom: 1rem; padding-left: 1.5rem; color: #94a3b8; }
+        .article-content p { margin-bottom: 1rem; line-height: 1.7; color: #94a3b8; overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; }
+        .article-content ul, .article-content ol { margin-bottom: 1rem; padding-left: 1.5rem; color: #94a3b8; overflow-wrap: break-word; }
+        .article-content h1, .article-content h2, .article-content h3 { overflow-wrap: break-word; }
         .article-content ul { list-style-type: disc; }
         .article-content ol { list-style-type: decimal; }
         .article-content a { color: #22d3ee; text-decoration: underline; }
@@ -326,7 +327,7 @@ export const ArticleDetail = () => {
             </div>
           )}
 
-          <div className="p-8 md:p-12">
+          <div className="p-5 sm:p-8 md:p-12">
             <div className="flex items-center gap-4 text-xs text-gray-500 mb-6 uppercase tracking-widest">
               <div className="flex items-center gap-1">
                 <Calendar size={14} />
@@ -344,7 +345,7 @@ export const ArticleDetail = () => {
               )}
             </div>
 
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-8 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl md:text-5xl font-bold text-white mb-8 tracking-tight leading-tight">
               {article.title}
             </h1>
 
