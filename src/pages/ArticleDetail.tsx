@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, Tag, ArrowLeft, Music, Video, MessageSquare, Send, User, Instagram, Reply } from 'lucide-react';
+import { Calendar, Tag, ArrowLeft, Music, Video, MessageSquare, Send, User, Instagram, Reply, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 interface Article {
   id: string;
@@ -11,6 +11,8 @@ interface Article {
   tag: string | null;
   media_url: string | null;
   media_type: string | null;
+  likes: number;
+  dislikes: number;
   created_at: string;
 }
 
@@ -21,6 +23,8 @@ interface Comment {
   name: string;
   instagram: string | null;
   content: string;
+  likes: number;
+  dislikes: number;
   created_at: string;
 }
 
@@ -58,12 +62,33 @@ export const ArticleDetail = () => {
       .then(setComments);
   };
 
+  const handleVote = async (type: 'like' | 'dislike', targetId: string, isComment = false) => {
+    const endpoint = isComment ? `/api/comments/${targetId}/vote` : `/api/articles/${targetId}/vote`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type })
+      });
+      if (res.ok) {
+        if (isComment) fetchComments();
+        else fetchArticle();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentContent.trim()) return;
 
     setIsSubmitting(true);
     try {
+      // Find the actual parent (if we're replying to a reply, the parent is the root comment)
+      const parentComment = comments.find(c => c.id === replyTo);
+      const actualParentId = parentComment?.parent_id || replyTo;
+
       const res = await fetch(`/api/articles/${id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -71,7 +96,7 @@ export const ArticleDetail = () => {
           name: commentName || 'Анонимен',
           instagram: commentInsta,
           content: commentContent,
-          parent_id: replyTo
+          parent_id: actualParentId
         })
       });
 
@@ -89,20 +114,38 @@ export const ArticleDetail = () => {
     }
   };
 
-  const renderCommentForm = (isReply = false) => (
+  const handleReplyClick = (comment: Comment) => {
+    // If it's a reply, we want to open the form under its root parent
+    const targetId = comment.parent_id || comment.id;
+    
+    if (replyTo === targetId) {
+      setReplyTo(null);
+      setCommentContent('');
+    } else {
+      setReplyTo(targetId);
+      // If replying to a reply, tag the person
+      if (comment.parent_id) {
+        setCommentContent(`@${comment.name} `);
+      } else {
+        setCommentContent('');
+      }
+    }
+  };
+
+  const renderCommentForm = (isReply = false, targetName?: string) => (
     <motion.div 
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
-      className={`${isReply ? 'mt-4 mb-8 ml-4' : 'mb-12'} bg-white/5 rounded-[2rem] border border-white/10 p-8`}
+      className={`${isReply ? 'mt-4 mb-8' : 'mb-12'} bg-white/5 rounded-[2rem] border border-white/10 p-6 md:p-8`}
     >
       <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
         {isReply ? <Reply size={18} className="text-cyan-400" /> : <MessageSquare size={18} className="text-cyan-400" />}
-        {isReply ? 'Отговор на коментар' : 'Остави коментар'}
+        {isReply ? `Отговор на ${targetName || 'коментар'}` : 'Остави коментар'}
         {isReply && (
           <button 
             onClick={() => setReplyTo(null)}
-            className="text-xs text-gray-500 hover:text-white ml-2 underline"
+            className="text-xs text-gray-500 hover:text-white ml-auto underline"
           >
             Отказ
           </button>
@@ -140,6 +183,7 @@ export const ArticleDetail = () => {
             rows={4}
             className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-cyan-500/50 transition-all resize-none"
             required
+            autoFocus={isReply}
           />
         </div>
         <button
@@ -160,60 +204,143 @@ export const ArticleDetail = () => {
     </motion.div>
   );
 
-  const renderComments = (parentId: string | null = null, depth = 0) => {
-    const filtered = comments.filter(c => c.parent_id === parentId);
-    if (filtered.length === 0) return null;
-
+  const renderComments = () => {
+    const rootComments = comments.filter(c => !c.parent_id);
+    
     return (
-      <div className={`space-y-6 ${depth > 0 ? 'ml-6 md:ml-12 mt-6 border-l border-white/10 pl-6' : ''}`}>
-        {filtered.map(comment => (
-          <div key={comment.id} className="group">
-            <div className="bg-white/5 rounded-2xl p-6 border border-white/10 hover:border-white/20 transition-all">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-400">
-                    <User size={20} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white">{comment.name}</span>
-                      {comment.instagram && (
-                        <a 
-                          href={`https://instagram.com/${comment.instagram.replace('@', '')}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-pink-500 hover:text-pink-400 transition-colors"
-                        >
-                          <Instagram size={14} />
-                        </a>
-                      )}
+      <div className="space-y-10">
+        {rootComments.map(root => {
+          const replies = comments.filter(c => c.parent_id === root.id);
+          
+          return (
+            <div key={root.id} className="space-y-6">
+              {/* Main Comment */}
+              <div className="bg-white/5 rounded-[2rem] p-6 md:p-8 border border-white/10 hover:border-white/20 transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-400">
+                      <User size={20} />
                     </div>
-                    <span className="text-[10px] text-gray-500 uppercase tracking-widest">
-                      {new Date(comment.created_at).toLocaleString('bg-BG')}
-                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white">{root.name}</span>
+                        {root.instagram && (
+                          <a 
+                            href={`https://instagram.com/${root.instagram.replace('@', '')}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-pink-500 hover:text-pink-400 transition-colors"
+                          >
+                            <Instagram size={14} />
+                          </a>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-gray-500 uppercase tracking-widest">
+                        {new Date(root.created_at).toLocaleString('bg-BG')}
+                      </span>
+                    </div>
                   </div>
+                  <button 
+                    onClick={() => handleReplyClick(root)}
+                    className={`transition-colors flex items-center gap-1 text-xs uppercase tracking-widest ${replyTo === root.id ? 'text-cyan-400' : 'text-gray-500 hover:text-cyan-400'}`}
+                  >
+                    <Reply size={14} />
+                    Отговор
+                  </button>
                 </div>
-                <button 
-                  onClick={() => {
-                    setReplyTo(comment.id);
-                    setCommentContent('');
-                  }}
-                  className={`transition-colors flex items-center gap-1 text-xs uppercase tracking-widest ${replyTo === comment.id ? 'text-cyan-400' : 'text-gray-500 hover:text-cyan-400'}`}
-                >
-                  <Reply size={14} />
-                  Отговор
-                </button>
+                <p className="text-gray-300 leading-relaxed whitespace-pre-wrap mb-4">{root.content}</p>
+                
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => handleVote('like', root.id, true)}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-cyan-400 transition-colors"
+                  >
+                    <ThumbsUp size={14} />
+                    <span>{root.likes}</span>
+                  </button>
+                  <button 
+                    onClick={() => handleVote('dislike', root.id, true)}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-400 transition-colors"
+                  >
+                    <ThumbsDown size={14} />
+                    <span>{root.dislikes}</span>
+                  </button>
+                </div>
               </div>
-              <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{comment.content}</p>
-            </div>
-            
-            <AnimatePresence>
-              {replyTo === comment.id && renderCommentForm(true)}
-            </AnimatePresence>
 
-            {renderComments(comment.id, depth + 1)}
-          </div>
-        ))}
+              {/* Replies (Indented) */}
+              {replies.length > 0 && (
+                <div className="ml-6 md:ml-12 space-y-4 border-l border-white/10 pl-6">
+                  {replies.map(reply => (
+                    <div key={reply.id} className="bg-white/5 rounded-2xl p-5 md:p-6 border border-white/10 hover:border-white/20 transition-all">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                            <User size={16} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-white">{reply.name}</span>
+                              {reply.instagram && (
+                                <a 
+                                  href={`https://instagram.com/${reply.instagram.replace('@', '')}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-pink-500 hover:text-pink-400 transition-colors"
+                                >
+                                  <Instagram size={12} />
+                                </a>
+                              )}
+                            </div>
+                            <span className="text-[9px] text-gray-500 uppercase tracking-widest">
+                              {new Date(reply.created_at).toLocaleString('bg-BG')}
+                            </span>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => handleReplyClick(reply)}
+                          className="text-gray-500 hover:text-cyan-400 transition-colors flex items-center gap-1 text-[10px] uppercase tracking-widest"
+                        >
+                          <Reply size={12} />
+                          Отговор
+                        </button>
+                      </div>
+                      <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap mb-3">
+                        {reply.content.startsWith('@') ? (
+                          <>
+                            <span className="text-cyan-400 font-medium">{reply.content.split(' ')[0]}</span>
+                            {reply.content.substring(reply.content.indexOf(' '))}
+                          </>
+                        ) : reply.content}
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => handleVote('like', reply.id, true)}
+                          className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-cyan-400 transition-colors"
+                        >
+                          <ThumbsUp size={12} />
+                          <span>{reply.likes}</span>
+                        </button>
+                        <button 
+                          onClick={() => handleVote('dislike', reply.id, true)}
+                          className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-red-400 transition-colors"
+                        >
+                          <ThumbsDown size={12} />
+                          <span>{reply.dislikes}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Reply Form for this thread */}
+              <AnimatePresence>
+                {replyTo === root.id && renderCommentForm(true, root.name)}
+              </AnimatePresence>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -353,6 +480,27 @@ export const ArticleDetail = () => {
               className="article-content"
               dangerouslySetInnerHTML={{ __html: article.content }}
             />
+
+            {/* Article Voting */}
+            <div className="mt-12 pt-8 border-t border-white/10 flex items-center gap-6 no-print">
+              <span className="text-sm font-medium text-gray-400">Беше ли полезна тази статия?</span>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => handleVote('like', article.id)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:border-cyan-500/50 hover:bg-cyan-500/5 transition-all text-gray-400 hover:text-cyan-400"
+                >
+                  <ThumbsUp size={18} />
+                  <span className="font-bold">{article.likes}</span>
+                </button>
+                <button 
+                  onClick={() => handleVote('dislike', article.id)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:border-red-500/50 hover:bg-red-500/5 transition-all text-gray-400 hover:text-red-400"
+                >
+                  <ThumbsDown size={18} />
+                  <span className="font-bold">{article.dislikes}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </motion.article>
 

@@ -89,6 +89,8 @@ async function initDb() {
       tag TEXT,
       media_url TEXT,
       media_type TEXT,
+      likes INTEGER DEFAULT 0,
+      dislikes INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -104,6 +106,8 @@ async function initDb() {
       name TEXT,
       instagram TEXT,
       content TEXT NOT NULL,
+      likes INTEGER DEFAULT 0,
+      dislikes INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
     );
@@ -114,6 +118,22 @@ async function initDb() {
   } catch (e) {
     console.log('Adding tag column to articles table...');
     await db.execute('ALTER TABLE articles ADD COLUMN tag TEXT');
+  }
+
+  try {
+    await db.execute('SELECT likes FROM articles LIMIT 1');
+  } catch (e) {
+    console.log('Adding likes/dislikes columns to articles table...');
+    await db.execute('ALTER TABLE articles ADD COLUMN likes INTEGER DEFAULT 0');
+    await db.execute('ALTER TABLE articles ADD COLUMN dislikes INTEGER DEFAULT 0');
+  }
+
+  try {
+    await db.execute('SELECT likes FROM comments LIMIT 1');
+  } catch (e) {
+    console.log('Adding likes/dislikes columns to comments table...');
+    await db.execute('ALTER TABLE comments ADD COLUMN likes INTEGER DEFAULT 0');
+    await db.execute('ALTER TABLE comments ADD COLUMN dislikes INTEGER DEFAULT 0');
   }
 
   const initialUser = 'Iwog1322.';
@@ -440,6 +460,40 @@ async function startServer() {
         args: [id, article_id, parent_id || null, name || 'Анонимен', instagram || null, content]
       });
       res.json({ success: true, id });
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
+    }
+  });
+
+  app.post('/api/articles/:id/vote', async (req, res) => {
+    const { type } = req.body; // 'like' or 'dislike'
+    const id = req.params.id;
+    if (type !== 'like' && type !== 'dislike') return res.status(400).json({ error: 'Invalid type' });
+
+    try {
+      const column = type === 'like' ? 'likes' : 'dislikes';
+      await db.execute({
+        sql: `UPDATE articles SET ${column} = ${column} + 1 WHERE id = ?`,
+        args: [id]
+      });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
+    }
+  });
+
+  app.post('/api/comments/:id/vote', async (req, res) => {
+    const { type } = req.body; // 'like' or 'dislike'
+    const id = req.params.id;
+    if (type !== 'like' && type !== 'dislike') return res.status(400).json({ error: 'Invalid type' });
+
+    try {
+      const column = type === 'like' ? 'likes' : 'dislikes';
+      await db.execute({
+        sql: `UPDATE comments SET ${column} = ${column} + 1 WHERE id = ?`,
+        args: [id]
+      });
+      res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: 'Database error' });
     }
