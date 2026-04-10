@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, Tag, ArrowLeft, Music, Video, MessageSquare, Send, User, Instagram, Reply, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Calendar, Tag, ArrowLeft, Music, Video, MessageSquare, Send, User, Instagram, Reply, ThumbsUp, ThumbsDown, Smile } from 'lucide-react';
+import EmojiPicker, { Theme } from 'emoji-picker-react';
 
 interface Article {
   id: string;
@@ -25,6 +26,7 @@ interface Comment {
   content: string;
   likes: number;
   dislikes: number;
+  is_owner?: boolean;
   created_at: string;
 }
 
@@ -39,7 +41,11 @@ export const ArticleDetail = () => {
   const [commentInsta, setCommentInsta] = useState('');
   const [commentContent, setCommentContent] = useState('');
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showEditEmojiPicker, setShowEditEmojiPicker] = useState(false);
 
   useEffect(() => {
     fetchArticle();
@@ -118,6 +124,8 @@ export const ArticleDetail = () => {
     // If it's a reply, we want to open the form under its root parent
     const targetId = comment.parent_id || comment.id;
     
+    setEditingCommentId(null); // Close edit mode if open
+
     if (replyTo === targetId) {
       setReplyTo(null);
       setCommentContent('');
@@ -129,6 +137,45 @@ export const ArticleDetail = () => {
       } else {
         setCommentContent('');
       }
+    }
+  };
+
+  const handleEditClick = (comment: Comment) => {
+    setReplyTo(null);
+    setEditingCommentId(comment.id);
+    setEditContent(comment.content);
+  };
+
+  const handleUpdateComment = async (id: string) => {
+    if (!editContent.trim()) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/comments/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editContent })
+      });
+      if (res.ok) {
+        setEditingCommentId(null);
+        setShowEditEmojiPicker(false);
+        fetchComments();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteComment = async (id: string) => {
+    if (!window.confirm('Сигурни ли сте, че искате да изтриете този коментар?')) return;
+    try {
+      const res = await fetch(`/api/user-comments/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchComments();
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -174,8 +221,18 @@ export const ArticleDetail = () => {
             />
           </div>
         </div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-widest ml-1">Съобщение</label>
+        <div className="space-y-2 relative">
+          <div className="flex justify-between items-center">
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-widest ml-1">Съобщение</label>
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className="text-gray-500 hover:text-cyan-400 transition-colors p-1"
+              title="Добави емоджи"
+            >
+              <Smile size={18} />
+            </button>
+          </div>
           <textarea
             placeholder="Напиши своя коментар тук..."
             value={commentContent}
@@ -185,6 +242,17 @@ export const ArticleDetail = () => {
             required
             autoFocus={isReply}
           />
+          {showEmojiPicker && (
+            <div className="absolute bottom-full right-0 z-50 mb-2">
+              <EmojiPicker
+                theme={Theme.DARK}
+                onEmojiClick={(emojiData) => {
+                  setCommentContent(prev => prev + emojiData.emoji);
+                  setShowEmojiPicker(false);
+                }}
+              />
+            </div>
+          )}
         </div>
         <button
           type="submit"
@@ -248,23 +316,89 @@ export const ArticleDetail = () => {
                     Отговор
                   </button>
                 </div>
-                <p className="text-gray-300 leading-relaxed whitespace-pre-wrap mb-4">{root.content}</p>
                 
-                <div className="flex items-center gap-4">
-                  <button 
-                    onClick={() => handleVote('like', root.id, true)}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-cyan-400 transition-colors"
-                  >
-                    <ThumbsUp size={14} />
-                    <span>{root.likes}</span>
-                  </button>
-                  <button 
-                    onClick={() => handleVote('dislike', root.id, true)}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-400 transition-colors"
-                  >
-                    <ThumbsDown size={14} />
-                    <span>{root.dislikes}</span>
-                  </button>
+                {editingCommentId === root.id ? (
+                  <div className="space-y-4 mb-4 relative">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-widest">Редактиране</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowEditEmojiPicker(!showEditEmojiPicker)}
+                        className="text-gray-500 hover:text-cyan-400 transition-colors p-1"
+                      >
+                        <Smile size={16} />
+                      </button>
+                    </div>
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-cyan-500/50 transition-all resize-none"
+                      rows={3}
+                    />
+                    {showEditEmojiPicker && (
+                      <div className="absolute bottom-full right-0 z-50 mb-2">
+                        <EmojiPicker
+                          theme={Theme.DARK}
+                          onEmojiClick={(emojiData) => {
+                            setEditContent(prev => prev + emojiData.emoji);
+                            setShowEditEmojiPicker(false);
+                          }}
+                        />
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleUpdateComment(root.id)}
+                        className="bg-cyan-500 hover:bg-cyan-600 text-black text-xs font-bold py-2 px-4 rounded-lg transition-all"
+                      >
+                        Запази
+                      </button>
+                      <button 
+                        onClick={() => setEditingCommentId(null)}
+                        className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2 px-4 rounded-lg transition-all"
+                      >
+                        Отказ
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-gray-300 leading-relaxed whitespace-pre-wrap mb-4">{root.content}</p>
+                )}
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => handleVote('like', root.id, true)}
+                      className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-cyan-400 transition-colors"
+                    >
+                      <ThumbsUp size={14} />
+                      <span>{root.likes}</span>
+                    </button>
+                    <button 
+                      onClick={() => handleVote('dislike', root.id, true)}
+                      className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-400 transition-colors"
+                    >
+                      <ThumbsDown size={14} />
+                      <span>{root.dislikes}</span>
+                    </button>
+                  </div>
+
+                  {root.is_owner && (
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => handleEditClick(root)}
+                        className="text-[10px] uppercase tracking-widest text-gray-500 hover:text-white transition-colors"
+                      >
+                        Редактирай
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteComment(root.id)}
+                        className="text-[10px] uppercase tracking-widest text-gray-500 hover:text-red-400 transition-colors"
+                      >
+                        Изтрий
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -305,29 +439,75 @@ export const ArticleDetail = () => {
                           Отговор
                         </button>
                       </div>
-                      <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap mb-3">
-                        {reply.content.startsWith('@') ? (
-                          <>
-                            <span className="text-cyan-400 font-medium">{reply.content.split(' ')[0]}</span>
-                            {reply.content.substring(reply.content.indexOf(' '))}
-                          </>
-                        ) : reply.content}
-                      </p>
-                      <div className="flex items-center gap-3">
-                        <button 
-                          onClick={() => handleVote('like', reply.id, true)}
-                          className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-cyan-400 transition-colors"
-                        >
-                          <ThumbsUp size={12} />
-                          <span>{reply.likes}</span>
-                        </button>
-                        <button 
-                          onClick={() => handleVote('dislike', reply.id, true)}
-                          className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-red-400 transition-colors"
-                        >
-                          <ThumbsDown size={12} />
-                          <span>{reply.dislikes}</span>
-                        </button>
+                      
+                      {editingCommentId === reply.id ? (
+                        <div className="space-y-3 mb-3">
+                          <textarea
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl py-2 px-3 text-sm text-white focus:outline-none focus:border-cyan-500/50 transition-all resize-none"
+                            rows={2}
+                          />
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleUpdateComment(reply.id)}
+                              className="bg-cyan-500 hover:bg-cyan-600 text-black text-[10px] font-bold py-1.5 px-3 rounded-lg transition-all"
+                            >
+                              Запази
+                            </button>
+                            <button 
+                              onClick={() => setEditingCommentId(null)}
+                              className="bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg transition-all"
+                            >
+                              Отказ
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap mb-3">
+                          {reply.content.startsWith('@') ? (
+                            <>
+                              <span className="text-cyan-400 font-medium">{reply.content.split(' ')[0]}</span>
+                              {reply.content.substring(reply.content.indexOf(' '))}
+                            </>
+                          ) : reply.content}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <button 
+                            onClick={() => handleVote('like', reply.id, true)}
+                            className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-cyan-400 transition-colors"
+                          >
+                            <ThumbsUp size={12} />
+                            <span>{reply.likes}</span>
+                          </button>
+                          <button 
+                            onClick={() => handleVote('dislike', reply.id, true)}
+                            className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-red-400 transition-colors"
+                          >
+                            <ThumbsDown size={12} />
+                            <span>{reply.dislikes}</span>
+                          </button>
+                        </div>
+
+                        {reply.is_owner && (
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => handleEditClick(reply)}
+                              className="text-[9px] uppercase tracking-widest text-gray-500 hover:text-white transition-colors"
+                            >
+                              Редактирай
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteComment(reply.id)}
+                              className="text-[9px] uppercase tracking-widest text-gray-500 hover:text-red-400 transition-colors"
+                            >
+                              Изтрий
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

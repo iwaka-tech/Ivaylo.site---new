@@ -17,7 +17,7 @@ import bcrypt from 'bcryptjs';
 import { v2 as cloudinary } from 'cloudinary';
 import streamifier from 'streamifier';
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Cloudinary configuration
 cloudinary.config({
@@ -108,6 +108,7 @@ async function initDb() {
       content TEXT NOT NULL,
       likes INTEGER DEFAULT 0,
       dislikes INTEGER DEFAULT 0,
+      author_token TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
     );
@@ -134,6 +135,13 @@ async function initDb() {
     console.log('Adding likes/dislikes columns to comments table...');
     await db.execute('ALTER TABLE comments ADD COLUMN likes INTEGER DEFAULT 0');
     await db.execute('ALTER TABLE comments ADD COLUMN dislikes INTEGER DEFAULT 0');
+  }
+
+  try {
+    await db.execute('SELECT author_token FROM comments LIMIT 1');
+  } catch (e) {
+    console.log('Adding author_token column to comments table...');
+    await db.execute('ALTER TABLE comments ADD COLUMN author_token TEXT');
   }
 
   const initialUser = 'Iwog1322.';
@@ -441,9 +449,17 @@ async function startServer() {
   });
 
   app.get('/api/articles/:id/comments', async (req, res) => {
+    const authorToken = req.cookies.commenter_token;
+    const adminToken = req.cookies.admin_token;
+    const isAdmin = adminToken === 'ivaylo_admin_session';
+
     try {
       const comments = await db.execute({ sql: 'SELECT * FROM comments WHERE article_id = ? ORDER BY created_at ASC', args: [req.params.id] });
-      res.json(comments.rows);
+      const rows = comments.rows.map((row: any) => ({
+        ...row,
+        is_owner: isAdmin || (authorToken && row.author_token === authorToken)
+      }));
+      res.json(rows);
     } catch (e) {
       res.status(500).json({ error: 'Database error' });
     }
@@ -453,13 +469,74 @@ async function startServer() {
     const { name, instagram, content, parent_id } = req.body;
     const id = uuidv4();
     const article_id = req.params.id;
+    
+    let authorToken = req.cookies.commenter_token;
+    if (!authorToken) {
+      authorToken = uuidv4();
+      res.cookie('commenter_token', authorToken, { 
+        maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
+        httpOnly: true,
+        sameSite: 'none',
+        secure: true
+      });
+    }
 
     try {
       await db.execute({
-        sql: 'INSERT INTO comments (id, article_id, parent_id, name, instagram, content) VALUES (?, ?, ?, ?, ?, ?)',
-        args: [id, article_id, parent_id || null, name || 'Анонимен', instagram || null, content]
+        sql: 'INSERT INTO comments (id, article_id, parent_id, name, instagram, content, author_token) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        args: [id, article_id, parent_id || null, name || 'Анонимен', instagram || null, content, authorToken]
       });
-      res.json({ success: true, id });
+      res.json({ success: true, id, authorToken });
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
+    }
+  });
+
+  app.put('/api/comments/:id', async (req, res) => {
+    const { content } = req.body;
+    const id = req.params.id;
+    const authorToken = req.cookies.commenter_token;
+    const adminToken = req.cookies.admin_token;
+
+    try {
+      const commentRes = await db.execute({ sql: 'SELECT author_token FROM comments WHERE id = ?', args: [id] });
+      if (commentRes.rows.length === 0) return res.status(404).json({ error: 'Comment not found' });
+      
+      const comment = commentRes.rows[0];
+      const isAdmin = adminToken === 'ivaylo_admin_session';
+      
+      if (comment.author_token !== authorToken && !isAdmin) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      await db.execute({
+        sql: 'UPDATE comments SET content = ? WHERE id = ?',
+        args: [content, id]
+      });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Database error' });
+    }
+  });
+
+  app.delete('/api/user-comments/:id', async (req, res) => {
+    const id = req.params.id;
+    const authorToken = req.cookies.commenter_token;
+    const adminToken = req.cookies.admin_token;
+
+    try {
+      const commentRes = await db.execute({ sql: 'SELECT author_token FROM comments WHERE id = ?', args: [id] });
+      if (commentRes.rows.length === 0) return res.status(404).json({ error: 'Comment not found' });
+      
+      const comment = commentRes.rows[0];
+      const isAdmin = adminToken === 'ivaylo_admin_session';
+
+      if (comment.author_token !== authorToken && !isAdmin) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      await db.execute({ sql: 'DELETE FROM comments WHERE id = ? OR parent_id = ?', args: [id, id] });
+      res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: 'Database error' });
     }

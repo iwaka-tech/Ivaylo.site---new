@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, LogOut, Key, FileText, Image as ImageIcon, Music, Video, CheckCircle, Edit3, X, Users, AlertTriangle, MessageSquare, Loader2 } from 'lucide-react';
+import { Plus, Trash2, LogOut, Key, FileText, Image as ImageIcon, Music, Video, CheckCircle, Edit3, X, Users, AlertTriangle, MessageSquare, Loader2, Smile } from 'lucide-react';
 import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { useGameStore } from '../store/useGameStore';
+import EmojiPicker, { Theme } from 'emoji-picker-react';
 
 // Register custom font sizes
 const Size = Quill.import('formats/size') as any;
@@ -61,6 +62,8 @@ export const Admin = () => {
   const [articleComments, setArticleComments] = useState<any[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
+  const [showTitleEmoji, setShowTitleEmoji] = useState(false);
+  const [showContentEmoji, setShowContentEmoji] = useState(false);
 
   const navigate = useNavigate();
 
@@ -392,8 +395,17 @@ export const Admin = () => {
                     {error}
                   </div>
                 )}
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-500 uppercase tracking-widest ml-1">Заглавие</label>
+                <div className="space-y-2 relative">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-medium text-gray-500 uppercase tracking-widest ml-1">Заглавие</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowTitleEmoji(!showTitleEmoji)}
+                      className="text-gray-500 hover:text-cyan-400 transition-colors p-1"
+                    >
+                      <Smile size={18} />
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={title}
@@ -401,6 +413,17 @@ export const Admin = () => {
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-cyan-500/50 transition-all"
                     required
                   />
+                  {showTitleEmoji && (
+                    <div className="absolute bottom-full right-0 z-50 mb-2">
+                      <EmojiPicker
+                        theme={Theme.DARK}
+                        onEmojiClick={(emojiData) => {
+                          setTitle(prev => prev + emojiData.emoji);
+                          setShowTitleEmoji(false);
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-gray-500 uppercase tracking-widest ml-1">Категория</label>
@@ -440,15 +463,25 @@ export const Admin = () => {
                     )}
                   </select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 relative">
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-widest ml-1">Съдържание</label>
-                    {isUploadingMedia && (
-                      <div className="flex items-center gap-2 text-cyan-400 text-xs font-medium">
-                        <Loader2 size={14} className="animate-spin" />
-                        Качване на файл...
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {isUploadingMedia && (
+                        <div className="flex items-center gap-2 text-cyan-400 text-xs font-medium">
+                          <Loader2 size={14} className="animate-spin" />
+                          Качване на файл...
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowContentEmoji(!showContentEmoji)}
+                        className="text-gray-500 hover:text-cyan-400 transition-colors p-1"
+                        title="Добави емоджи"
+                      >
+                        <Smile size={18} />
+                      </button>
+                    </div>
                   </div>
                   <ReactQuill 
                     ref={reactQuillRef}
@@ -457,6 +490,25 @@ export const Admin = () => {
                     onChange={setContent}
                     modules={quillModules}
                   />
+                  {showContentEmoji && (
+                    <div className="absolute bottom-full right-0 z-50 mb-2">
+                      <EmojiPicker
+                        theme={Theme.DARK}
+                        onEmojiClick={(emojiData) => {
+                          const quill = reactQuillRef.current?.getEditor();
+                          if (quill) {
+                            const range = quill.getSelection();
+                            if (range) {
+                              quill.insertText(range.index, emojiData.emoji);
+                            } else {
+                              quill.insertText(quill.getLength() - 1, emojiData.emoji);
+                            }
+                          }
+                          setShowContentEmoji(false);
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-gray-500 uppercase tracking-widest ml-1">Медия (Остави празно за запазване)</label>
