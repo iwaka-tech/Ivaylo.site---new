@@ -455,10 +455,19 @@ async function startServer() {
 
     try {
       const comments = await db.execute({ sql: 'SELECT * FROM comments WHERE article_id = ? ORDER BY created_at ASC', args: [req.params.id] });
-      const rows = comments.rows.map((row: any) => ({
-        ...row,
-        is_owner: isAdmin || (authorToken && row.author_token === authorToken)
-      }));
+      const rows = comments.rows.map((row: any) => {
+        const isOwner = authorToken && 
+                        row.author_token && 
+                        authorToken !== 'undefined' && 
+                        authorToken !== 'null' && 
+                        row.author_token === authorToken;
+        
+        return {
+          ...row,
+          is_owner: !!(isOwner || isAdmin),
+          is_admin: isAdmin
+        };
+      });
       res.json(rows);
     } catch (e) {
       res.status(500).json({ error: 'Database error' });
@@ -471,7 +480,7 @@ async function startServer() {
     const article_id = req.params.id;
     
     let authorToken = req.cookies.commenter_token;
-    if (!authorToken) {
+    if (!authorToken || authorToken === 'undefined' || authorToken === 'null') {
       authorToken = uuidv4();
       res.cookie('commenter_token', authorToken, { 
         maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
@@ -504,8 +513,13 @@ async function startServer() {
       
       const comment = commentRes.rows[0];
       const isAdmin = adminToken === 'ivaylo_admin_session';
+      const isOwner = authorToken && 
+                      comment.author_token && 
+                      authorToken !== 'undefined' && 
+                      authorToken !== 'null' && 
+                      comment.author_token === authorToken;
       
-      if (comment.author_token !== authorToken && !isAdmin) {
+      if (!isOwner && !isAdmin) {
         return res.status(403).json({ error: 'Forbidden' });
       }
 
@@ -530,8 +544,13 @@ async function startServer() {
       
       const comment = commentRes.rows[0];
       const isAdmin = adminToken === 'ivaylo_admin_session';
+      const isOwner = authorToken && 
+                      comment.author_token && 
+                      authorToken !== 'undefined' && 
+                      authorToken !== 'null' && 
+                      comment.author_token === authorToken;
 
-      if (comment.author_token !== authorToken && !isAdmin) {
+      if (!isOwner && !isAdmin) {
         return res.status(403).json({ error: 'Forbidden' });
       }
 

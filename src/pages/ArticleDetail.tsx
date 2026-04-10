@@ -27,6 +27,7 @@ interface Comment {
   likes: number;
   dislikes: number;
   is_owner?: boolean;
+  is_admin?: boolean;
   created_at: string;
 }
 
@@ -292,6 +293,9 @@ export const ArticleDetail = () => {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-white">{root.name}</span>
+                        {root.is_admin && (
+                          <span className="bg-cyan-500/10 text-cyan-400 text-[8px] px-1.5 py-0.5 rounded border border-cyan-500/20 font-bold uppercase tracking-tighter">Admin</span>
+                        )}
                         {root.instagram && (
                           <a 
                             href={`https://instagram.com/${root.instagram.replace('@', '')}`} 
@@ -414,8 +418,11 @@ export const ArticleDetail = () => {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-sm text-white">{reply.name}</span>
-                              {reply.instagram && (
+                               <span className="font-bold text-sm text-white">{reply.name}</span>
+                               {reply.is_admin && (
+                                 <span className="bg-cyan-500/10 text-cyan-400 text-[8px] px-1.5 py-0.5 rounded border border-cyan-500/20 font-bold uppercase tracking-tighter">Admin</span>
+                               )}
+                               {reply.instagram && (
                                 <a 
                                   href={`https://instagram.com/${reply.instagram.replace('@', '')}`} 
                                   target="_blank" 
