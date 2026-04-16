@@ -28,6 +28,7 @@ interface Comment {
   dislikes: number;
   is_owner?: boolean;
   is_admin?: boolean;
+  can_moderate?: boolean;
   created_at: string;
 }
 
@@ -387,7 +388,7 @@ export const ArticleDetail = () => {
                     </button>
                   </div>
 
-                  {root.is_owner && (
+                  {(root.is_owner || root.can_moderate) && (
                     <div className="flex items-center gap-3">
                       <button 
                         onClick={() => handleEditClick(root)}
@@ -499,7 +500,7 @@ export const ArticleDetail = () => {
                           </button>
                         </div>
 
-                        {reply.is_owner && (
+                        {(reply.is_owner || reply.can_moderate) && (
                           <div className="flex items-center gap-2">
                             <button 
                               onClick={() => handleEditClick(reply)}

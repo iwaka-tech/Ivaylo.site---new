@@ -109,10 +109,18 @@ async function initDb() {
       likes INTEGER DEFAULT 0,
       dislikes INTEGER DEFAULT 0,
       author_token TEXT,
+      is_admin INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
     );
   `);
+
+  try {
+    await db.execute('SELECT is_admin FROM comments LIMIT 1');
+  } catch (e) {
+    console.log('Adding is_admin column to comments table...');
+    await db.execute('ALTER TABLE comments ADD COLUMN is_admin INTEGER DEFAULT 0');
+  }
 
   try {
     await db.execute('SELECT tag FROM articles LIMIT 1');
@@ -460,12 +468,15 @@ async function startServer() {
                         row.author_token && 
                         authorToken !== 'undefined' && 
                         authorToken !== 'null' && 
+                        row.author_token !== 'undefined' && 
+                        row.author_token !== 'null' && 
                         row.author_token === authorToken;
         
         return {
           ...row,
-          is_owner: !!(isOwner || isAdmin),
-          is_admin: isAdmin
+          is_owner: !!isOwner,
+          can_moderate: isAdmin,
+          is_admin: row.is_admin === 1
         };
       });
       res.json(rows);
@@ -478,6 +489,9 @@ async function startServer() {
     const { name, instagram, content, parent_id } = req.body;
     const id = uuidv4();
     const article_id = req.params.id;
+    
+    const adminToken = req.cookies.admin_token;
+    const isAdmin = adminToken === 'ivaylo_admin_session';
     
     let authorToken = req.cookies.commenter_token;
     if (!authorToken || authorToken === 'undefined' || authorToken === 'null') {
@@ -492,8 +506,8 @@ async function startServer() {
 
     try {
       await db.execute({
-        sql: 'INSERT INTO comments (id, article_id, parent_id, name, instagram, content, author_token) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        args: [id, article_id, parent_id || null, name || 'Анонимен', instagram || null, content, authorToken]
+        sql: 'INSERT INTO comments (id, article_id, parent_id, name, instagram, content, author_token, is_admin) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [id, article_id, parent_id || null, name || 'Анонимен', instagram || null, content, authorToken, isAdmin ? 1 : 0]
       });
       res.json({ success: true, id, authorToken });
     } catch (e) {
@@ -517,6 +531,8 @@ async function startServer() {
                       comment.author_token && 
                       authorToken !== 'undefined' && 
                       authorToken !== 'null' && 
+                      comment.author_token !== 'undefined' && 
+                      comment.author_token !== 'null' && 
                       comment.author_token === authorToken;
       
       if (!isOwner && !isAdmin) {
@@ -548,6 +564,8 @@ async function startServer() {
                       comment.author_token && 
                       authorToken !== 'undefined' && 
                       authorToken !== 'null' && 
+                      comment.author_token !== 'undefined' && 
+                      comment.author_token !== 'null' && 
                       comment.author_token === authorToken;
 
       if (!isOwner && !isAdmin) {
