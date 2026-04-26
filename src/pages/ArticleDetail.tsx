@@ -561,11 +561,24 @@ export const ArticleDetail = () => {
           .bg-white\\/5 { background: transparent !important; }
           .border { border: none !important; }
         }
-        .article-content h1 { font-size: 2rem; font-weight: bold; margin-bottom: 1rem; color: white; }
-        .article-content h2 { font-size: 1.5rem; font-weight: bold; margin-bottom: 0.75rem; color: white; }
-        .article-content h3 { font-size: 1.25rem; font-weight: bold; margin-bottom: 0.5rem; color: white; }
-        .article-content p { margin-bottom: 1rem; line-height: 1.7; color: #94a3b8; overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; }
-        .article-content ul, .article-content ol { margin-bottom: 1rem; padding-left: 1.5rem; color: #94a3b8; overflow-wrap: break-word; }
+        .article-content h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 1.5rem; color: white; line-height: 1.2; letter-spacing: -0.02em; }
+        .article-content h2 { font-size: 1.8rem; font-weight: 700; margin-top: 2rem; margin-bottom: 1rem; color: white; line-height: 1.3; }
+        .article-content h3 { font-size: 1.4rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.75rem; color: white; }
+        .article-content p { 
+          margin-bottom: 1.5rem; 
+          line-height: 1.8; 
+          color: #cbd5e1; 
+          text-align: justify;
+          hyphens: auto;
+          overflow-wrap: break-word;
+        }
+        .article-content ul, .article-content ol { 
+          margin-bottom: 1.5rem; 
+          padding-left: 1.5rem; 
+          color: #cbd5e1; 
+          line-height: 1.8;
+          text-align: justify;
+        }
         .article-content h1, .article-content h2, .article-content h3 { overflow-wrap: break-word; }
         .article-content ul { list-style-type: disc; }
         .article-content ol { list-style-type: decimal; }
