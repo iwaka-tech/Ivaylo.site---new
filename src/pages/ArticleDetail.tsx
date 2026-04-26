@@ -611,6 +611,10 @@ export const ArticleDetail = () => {
         .article-content img { max-width: 100%; height: auto; border-radius: 1rem; margin: 1.5rem 0; }
         .article-content iframe { width: 100%; aspect-ratio: 16/9; border-radius: 1rem; margin: 1.5rem 0; }
         .article-content video { max-width: 100%; border-radius: 1rem; margin: 1.5rem 0; }
+        .article-content .ql-align-center { text-align: center; }
+        .article-content .ql-align-right { text-align: right; }
+        .article-content .ql-align-justify { text-align: justify; }
+        .article-content .ql-align-left { text-align: left; }
       `}</style>
 
       <div className="max-w-4xl mx-auto relative z-10">

@@ -259,6 +259,7 @@ export const Admin = () => {
       container: [
         [{ 'size': ['8', '9', '10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '26', '28', '30', '36', '40', '48', '50', '60', '64', '72', '80', '96'] }],
         ['bold', 'italic', 'underline', 'strike'],
+        [{ 'align': [] }],
         [{ 'list': 'ordered' }, { 'list': 'bullet' }],
         ['link', 'image', 'video'],
         ['clean']
@@ -284,20 +285,50 @@ export const Admin = () => {
           .ql-snow .ql-picker.ql-size { width: 44px !important; }
         }
         .ql-container { border: none !important; color: white; font-family: inherit; font-size: 1rem; }
-        .ql-editor { min-height: 200px; }
+        .ql-editor { 
+          min-height: 400px; 
+          padding: 2rem !important; /* Base padding */
+          max-width: 896px; /* max-w-4xl */
+          margin: 0 auto;
+          line-height: 1.8;
+          color: #cbd5e1;
+        }
+        
+        @media (min-width: 768px) {
+          .ql-editor {
+            padding: 3rem !important; /* Match md:p-12 of ArticleDetail */
+          }
+        }
+        
+        /* Sync styles with ArticleDetail article-content */
+        .ql-editor p { margin-bottom: 1.5rem !important; text-align: justify; hyphens: auto; }
+        .ql-editor h1 { font-size: 2.5rem !important; font-weight: 800 !important; margin-bottom: 1.5rem !important; color: white !important; line-height: 1.2 !important; }
+        .ql-editor h2 { font-size: 1.8rem !important; font-weight: 700 !important; margin-top: 2rem !important; margin-bottom: 1rem !important; color: white !important; line-height: 1.3 !important; }
+        .ql-editor h3 { font-size: 1.4rem !important; font-weight: 600 !important; margin-top: 1.5rem !important; margin-bottom: 0.75rem !important; color: white !important; }
+        .ql-editor ul, .ql-editor ol { margin-bottom: 1.5rem !important; color: #cbd5e1 !important; line-height: 1.8 !important; }
+        .ql-editor a { color: #22d3ee !important; text-decoration: underline !important; }
+        
+        .ql-editor .ql-align-center { text-align: center !important; }
+        .ql-editor .ql-align-right { text-align: right !important; }
+        .ql-editor .ql-align-justify { text-align: justify !important; }
+        .ql-editor .ql-align-left { text-align: left !important; }
+        
         .ql-stroke { stroke: #94a3b8 !important; }
         .ql-fill { fill: #94a3b8 !important; }
         .ql-picker { color: #94a3b8 !important; }
         .ql-active .ql-stroke { stroke: #22d3ee !important; }
         .ql-active .ql-fill { fill: #22d3ee !important; }
-        .ql-editor img { max-width: 100%; height: auto; border-radius: 0.5rem; }
-        .ql-editor iframe { width: 100%; aspect-ratio: 16/9; border-radius: 0.5rem; }
+        .ql-editor img { max-width: 100%; height: auto; border-radius: 1rem; margin: 1.5rem 0; }
+        .ql-editor iframe { width: 100%; aspect-ratio: 16/9; border-radius: 1rem; margin: 1.5rem 0; }
         .ql-picker-options { background-color: #111 !important; border: 1px solid rgba(255,255,255,0.1) !important; z-index: 1000 !important; max-height: 300px !important; overflow-y: auto !important; }
         .ql-picker-item { color: #94a3b8 !important; }
         .ql-picker-item:hover { color: white !important; }
         .ql-picker-label { color: #94a3b8 !important; }
         .ql-picker-label:hover { color: white !important; }
         
+        /* Tooltip fix */
+        .ql-tooltip { background-color: #111 !important; border: 1px solid rgba(255,255,255,0.1) !important; color: white !important; }
+        .ql-tooltip input { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; color: white !important; }
         /* Font size picker labels */
         .ql-snow .ql-picker.ql-size .ql-picker-label::before,
         .ql-snow .ql-picker.ql-size .ql-picker-item::before {
